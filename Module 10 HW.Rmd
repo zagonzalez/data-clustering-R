@@ -1,0 +1,231 @@
+---
+title: "Module 10 HW"
+author: "Zachary Gonzalez"
+date: '2022-03-30'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+QUESTION: (a) Conduct hierarchical clustering using single linkage and Ward linkage. Plot the 
+cluster dendrogram for both fit. Get two clusters from each of the methods. Use 
+function table() to compare the clusters with the two patient groups ALL/AML. 
+Which linkage function seems to work better here?
+(b) Use k-means cluster analysis to get two clusters. Use table() to compare the two 
+clusters with the two patient groups ALL/AML. 
+(c) Which clustering approach (hierarchical versus k-means) produce the best 
+matches to the two diagnose groups ALL/AML?
+(d) Find the two cluster means from the k-means cluster analysis. Perform a 
+bootstrap on the cluster means. Do the confidence intervals for the cluster means 
+overlap? Which of these two cluster means is estimated more accurately?
+(e) Produce a plot of K versus SSE, for K=1, ..., 30. How many clusters does this 
+plot suggest? 
+
+```{r}
+library(multtest)
+data(golub)
+```
+
+part a - single vs ward
+
+```{r}
+gol.fac <- factor(golub.cl, levels=0:1, labels = c("ALL", "AML"))
+clusterdata <- data.frame(golub[1042,])
+#clusterdata <- as.numeric(unlist(clusterdata))
+hc.single <- hclust(dist(clusterdata,method="euclidian"),method="single")
+hc.ward <- hclust(dist(clusterdata,method="euclidian"),method="ward.D2")
+```
+
+
+```{r}
+plot(hc.single, labels=gol.fac)
+rect.hclust(hc.single,k=2)
+groups <- cutree(hc.single,k=2)
+table(groups, gol.fac)
+```
+```{r}
+plot(hc.ward, labels=gol.fac)
+rect.hclust(hc.ward,k=2)
+groups <- cutree(hc.ward,k=2)
+table(groups, gol.fac)
+```
+WHICH METHOD IS BETTER? 
+
+The ward linkage function seems to work better in this instance. Unlike the single linkage method, the ward linkage method separates the data into two easy to discern clusters. 
+
+part b - k means analysis
+
+```{r}
+k.means <- kmeans(clusterdata, centers=2, nstart = 10)
+table(k.means$cluster, gol.fac)
+```
+
+part c 
+
+Which clustering approach produces the best matches to the ALL/AML groups? 
+
+The hierarchical method is more informative in this case and provides better matches to the ALL/AML groups.
+
+part d
+
+```{r}
+k.means
+```
+
+```{r}
+initial <- k.means$centers
+n <- dim(clusterdata)[1]; nboot<-1000
+boot.cl <- matrix(NA,nrow=nboot,ncol=2)
+for (i in 1:nboot){
+  dat.star <- clusterdata[sample(1:n,replace=TRUE),]
+  cl <- kmeans(dat.star, initial, nstart = 10)
+  boot.cl[i,] <- c(cl$centers[1], cl$centers[2])
+}
+apply(boot.cl,2,mean)
+quantile(boot.cl[,1],c(0.025,0.975))
+quantile(boot.cl[,2],c(0.025,0.975))
+```
+
+```{r}
+
+```
+
+
+The CI's for the cluster means do not overlap. As we can see from the data, the second cluster mean is estimated more accurately as the difference between the upper and lower limit of the CI is smaller.
+
+part e - plot of k vs sse
+
+```{r}
+K <- (1:30); sse<-rep(NA,length(K))
+for (k in K) {
+  sse[k]<-kmeans(clusterdata, centers = k, nstart = 10)$tot.withinss
+}
+plot(K,sse,type='o',xaxt='n'); axis(1, at = K, las = 2)
+```
+HOW MANY CLUSTERS THE PLOT SUGGEST
+
+Based on the plot k vs sse plot above, the number of clusters seems to be around 5. This is because the plot drops steeply from K = 1 and seems to level off quickly after K = 5 
+
+QUESTION: (a) Select the oncogenes and antigens from the Golub data. (Hint: Use grep() ).
+(b) On the selected data, do clustering analysis for the genes (not for the 
+patients). Using K-means and K-medoids with K=2 to cluster the genes. Use 
+table() to compare the resulting two clusters with the two gene groups 
+oncogenes and antigens for each of the two clustering analysis. 
+(c) Use appropriate tests (from previous modules) to test the marginal 
+independence in the two by two tables in (b). Which clustering method 
+provides clusters related to the two gene groups? 
+(d) Plot the cluster dendrograms for this part of golub data with single linkage 
+and complete linkage, using Euclidean distance. 
+
+part a 
+
+```{r}
+selection1 <- grep("oncogene", golub.gnames[,2])
+selection2 <- grep("antigen", golub.gnames[,2])
+```
+
+```{r}
+clustdata <- rbind(golub[selection1,], golub[selection2,])
+g.name <- rep(c("oncogene", "antigen"), c(length(selection1), length(selection2)))
+```
+
+part b 
+
+kmeans
+
+```{r}
+k.means_select <- kmeans(clustdata, centers = 2, nstart = 10)
+table(k.means_select$cluster, g.name)
+```
+
+kmedoids
+
+```{r}
+library(cluster)
+k.pam <- pam(clustdata, k=2)
+table(k.pam$clustering, g.name)
+```
+
+part c - test for marginal independence - do fisher test 
+
+```{r}
+fish_test_kmeans <- fisher.test(table(k.means_select$cluster, g.name))
+fish_test_kmeans
+```
+
+```{r}
+fish_test_kmedoids <- fisher.test(table(k.pam$clustering, g.name))
+fish_test_kmedoids
+```
+Due to the relatively large p-values, we fail to reject the null hypothesis of independence for both the k-means and k-medoids clustering methods. 
+
+part d - cluster dendograms
+
+```{r}
+single <- hclust(dist(clustdata,method="euclidian"),method="single")
+complete <- hclust(dist(clustdata,method="euclidian"),method="complete")
+plot(single, labels=g.name)
+plot(complete, labels=g.name)
+```
+For this case, complete linkage is a better method than single linkage as it more clearly outlines the separation of clusters. 
+
+QUESTION: We use the data set in package ISLR from r-project (Not Bioconductor). You can 
+use the following commands to load the data set. 
+install.packages('ISLR')
+library(ISLR)
+ncidata<-NCI60$data
+ncilabs<-NCI60$labs
+The ncidata (64 by 6830 matrix) contains 6830 gene expression measurements on 
+64 cancer cell lines. The cancer cell lines labels are contained in ncilabs. We do 
+clustering analysis on the 64 cell lines (the rows). 
+(a) Using k-means clustering, produce a plot of K versus SSE, for K=1,..., 30. 
+How many clusters appear to be there?
+(b) Do K-medoids clustering (K=7) with 1-correlation as the dissimilarity measure 
+on the data. Compare the clusters with the cell lines. Which type of cancer is well 
+identified in a cluster? Which type of cancer is not grouped into a cluster? 
+According to the clustering results, which types of cancer are most similar to 
+ovarian cancer?
+For (b) make sure you show the table in the output file based on which you are 
+making these conclusions. 
+
+part a 
+
+```{r}
+install.packages('ISLR', repos = "http://cran.us.r-project.org")
+```
+
+```{r}
+library(ISLR)
+ncidata<-NCI60$data
+ncilabs<-NCI60$labs
+```
+
+part a - kmeans clustering plot - clusters between 3 and 9
+
+```{r}
+K <- (1:30); sse<-rep(NA,length(K))
+for (k in K) {
+  sse[k]<-kmeans(ncidata, centers = k, nstart = 10)$tot.withinss
+}
+plot(K,sse,type='o',xaxt='n'); axis(1, at = K, las = 2)
+```
+
+From the above K vs SSE plot, we can see that the graph levels off after around 6-7, retaining a linear descent. This means that the number of clusters is likely around 6-7. 
+
+part b - k-medoids clustering 
+
+```{r}
+library(cluster)
+table(ncilabs,pam(as.dist(1-cor(t(ncidata))), k=7)$cluster)
+```
+As we can see from the table above, both colon cancer and leukemia are well defined into a single cluster. On the other hand, small cell lung cancer (NSCLC) is not well grouped into a single individual cluster, rather it contains a much larger clustering spread. Based on the results of the clustering, NSCLC bears the greates similarity to ovarian. Prostate and breast also shares some slight similarities in clustering patterns but not as significant. 
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
